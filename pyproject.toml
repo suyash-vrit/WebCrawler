@@ -1,0 +1,11 @@
+[project]
+name = "web-crawler"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "colorama>=0.4.6",
+    "crawl4ai[sync]>=0.7.6",
+    "ipython>=9.6.0",
+]
