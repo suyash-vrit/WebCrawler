@@ -12,14 +12,14 @@ from crawl4ai import (
     BrowserConfig,
     AdaptiveConfig,
     CrawlerRunConfig,
-    DefaultMarkdownGenerator
+    DefaultMarkdownGenerator,
 )
 from crawl4ai.deep_crawling import (
-    BestFirstCrawlingStrategy, 
+    BestFirstCrawlingStrategy,
     BFSDeepCrawlStrategy,
-    FilterChain
+    FilterChain,
 )
-from crawl4ai.deep_crawling.filters import ContentRelevanceFilter, DomainFilter
+from crawl4ai.deep_crawling.filters import ContentRelevanceFilter, DomainFilter, URLPatternFilter
 from crawl4ai.content_filter_strategy import BM25ContentFilter, PruningContentFilter
 from crawl4ai.deep_crawling.scorers import KeywordRelevanceScorer
 from urllib.parse import urlsplit
@@ -27,7 +27,12 @@ from pprint import pprint
 
 
 from config import *
-from helper import BasicLogger, initialize_seeds_vars, count_block_signals, initialize_single_url
+from helper import (
+    BasicLogger,
+    initialize_seeds_vars,
+    count_block_signals,
+    initialize_single_url,
+)
 
 # ==============================
 # Utility Functions
@@ -43,18 +48,21 @@ class Crawler:
         self.seed_dict = seed_dict
         self.enabled_adaptive_strategy = False
         self.enabled_bfs_strategy = not (Mode.BFS_STRATEGY.value - STRATEGY.value)
-        self.enabled_bestfirst_strategy = not (Mode.BESTFIRST_STRATEGY.value - STRATEGY.value)
+        self.enabled_bestfirst_strategy = not (
+            Mode.BESTFIRST_STRATEGY.value - STRATEGY.value
+        )
         self.pages_crawled = 0
-        self.written = 0 # no. of md pages written (for tracking MAX_PAGES limit)
+        self.written = 0  # no. of md pages written (for tracking MAX_PAGES limit)
         self.results = []
         self.batch = []
-        self.out_dir= seed_dict['out_dir']
-        self.md_dir= seed_dict['md_dir']
-        self.jsonl_path= seed_dict['jsonl_path']
-        self.allowed_domain= seed_dict['allowed_domain']
+        self.out_dir = seed_dict["out_dir"]
+        self.md_dir = seed_dict["md_dir"]
+        self.jsonl_path = seed_dict["jsonl_path"]
+        self.allowed_domain = seed_dict["allowed_domain"]
         self.blocked_rate = 0
-        self.blocked_domains = BLOCKED_DOMAINS 
+        self.blocked_domains = BLOCKED_DOMAINS
         self.content_relevance_filter_q = CONTENT_RELEVANCE_QUERY
+        self.enabled_url_matching = False
 
         # Rudimentary Check
         seed = seed_dict["url"]
@@ -64,27 +72,27 @@ class Crawler:
     def get_adaptive_config(self):
         if self.enabled_adaptive_strategy:
             high_precision_config = AdaptiveConfig(
-                confidence_threshold=0.9,      # Very high confidence required
-                max_pages=50,                  # Allow more pages
-                top_k_links=5,                 # Follow more links per page
-                min_gain_threshold=0.02        # Lower threshold to continue
+                confidence_threshold=0.9,  # Very high confidence required
+                max_pages=50,  # Allow more pages
+                top_k_links=5,  # Follow more links per page
+                min_gain_threshold=0.02,  # Lower threshold to continue
             )
-            
+
             # The following configs aren't accessed currently
             # Balanced configuration (default use case)
             balanced_config = AdaptiveConfig(
-                confidence_threshold=0.7,      # Moderate confidence
-                max_pages=20,                  # Reasonable limit
-                top_k_links=3,                 # Moderate branching
-                min_gain_threshold=0.05        # Standard gain threshold
+                confidence_threshold=0.7,  # Moderate confidence
+                max_pages=20,  # Reasonable limit
+                top_k_links=3,  # Moderate branching
+                min_gain_threshold=0.05,  # Standard gain threshold
             )
-            
+
             # Quick exploration configuration
             quick_config = AdaptiveConfig(
-                confidence_threshold=0.5,      # Lower confidence acceptable
-                max_pages=10,                  # Strict limit
-                top_k_links=2,                 # Minimal branching
-                min_gain_threshold=0.1         # High gain required
+                confidence_threshold=0.5,  # Lower confidence acceptable
+                max_pages=10,  # Strict limit
+                top_k_links=2,  # Minimal branching
+                min_gain_threshold=0.1,  # High gain required
             )
             return high_precision_config
         else:
@@ -95,24 +103,28 @@ class Crawler:
         # Configure domain filter only (no URL pattern filtering for now)
         domain_filter = DomainFilter(
             allowed_domains=[self.allowed_domain],
-            blocked_domains=self.blocked_domains if self.blocked_domains else []
+            blocked_domains=self.blocked_domains if self.blocked_domains else [],
         )
         bm25_content_filter = BM25ContentFilter(
             user_query="product pricing feature",
             bm25_threshold=10,
         )
         pruning_filter = PruningContentFilter(
-            threshold=0.52,                    # Slightly stricter than default
+            threshold=0.52,  # Slightly stricter than default
             threshold_type="fixed",
-            user_query="product"
+            user_query="product",
         )
 
-        content_filter = ContentRelevanceFilter(
-            query=self.content_relevance_filter_q,
-            threshold = 0.95 if self.content_relevance_filter_q else 0,
+        # content_filter = ContentRelevanceFilter(
+        #     query=self.content_relevance_filter_q,
+        #     threshold=0.6 if self.content_relevance_filter_q else 0,
+        # )
+
+        url_filter = URLPatternFilter(
+            patterns = URL_FILTERS,
         )
 
-        return FilterChain([domain_filter, content_filter])
+        return FilterChain([domain_filter]) #, url_filter])
 
     def get_strategy(self):
         strategy = None
@@ -124,23 +136,24 @@ class Crawler:
                 max_pages=MAX_PAGES,
                 max_depth=MAX_DEPTH,
                 include_external=False,
-                url_scorer = keyword_scorer if KEYWORDS else None,
-                filter_chain = self.get_filter()
+                url_scorer=keyword_scorer if KEYWORDS else None,
+                filter_chain=self.get_filter(),
             )
         elif self.enabled_bfs_strategy:
             if DEBUG:
                 logger.log_debug("Using BFSStrategy")
             strategy = BFSDeepCrawlStrategy(
-                max_depth=MAX_DEPTH,               # Crawl initial page + 2 levels deep
-                include_external=False,    # Stay within the same domain
-                max_pages=MAX_PAGES,              # Maximum number of pages to crawl (optional)
-                score_threshold=0.3 if KEYWORDS else float(-1 * math.inf),       # Minimum score for URLs to be crawled (optional)
-                url_scorer = keyword_scorer if KEYWORDS else None,
-                filter_chain = self.get_filter()
+                max_depth=MAX_DEPTH,  # Crawl initial page + 2 levels deep
+                include_external=False,  # Stay within the same domain
+                max_pages=MAX_PAGES,  # Maximum number of pages to crawl (optional)
+                score_threshold=(
+                    0.1 if KEYWORDS else float(-1 * math.inf)
+                ),  # Minimum score for URLs to be crawled (optional)
+                url_scorer=keyword_scorer if KEYWORDS else None,
+                filter_chain=self.get_filter(),
             )
 
         return strategy
-
 
     async def crawl(self, seed):
         # Start with the configured base delay; adjust via backoff if needed
@@ -167,10 +180,7 @@ class Crawler:
             ),
             browser_mode="pool",
             sleep_on_close=True,
-            
         )
-
-
 
         # --- Crawler run configuration ---
         run_cfg = CrawlerRunConfig(
@@ -186,7 +196,7 @@ class Crawler:
             verbose=True,
             # Additional parameters to handle dynamic content
             wait_until="domcontentloaded",  # Wait for DOM to load
-            delay_before_return_html=1,   # Small delay before capturing HTML
+            delay_before_return_html=1,  # Small delay before capturing HTML
             # Configure deep crawling strategy
             deep_crawl_strategy=self.get_strategy(),
         )
@@ -195,7 +205,6 @@ class Crawler:
         #     max_pages=MAX_PAGES,
         #     max_depth=MAX_DEPTH,
         # )
-
 
         print(f"[Seed X] {seed} | delay={per_seed_delay:.2f}s | conc={concurrency}")
 
@@ -206,7 +215,7 @@ class Crawler:
                 config=run_cfg,
             )
 
-            print(self.batch)
+            # print(self.batch)
 
             if not isinstance(self.batch, list):
                 self.batch = [self.batch] if self.batch else []
@@ -215,7 +224,9 @@ class Crawler:
         self.blocked_rate = count_block_signals(self.batch)
         if self.blocked_rate >= BACKOFF_THRESHOLD_RATE:
             print(f"  -> Block signals high ({self.blocked_rate:.0%}). Backing off.")
-            per_seed_base_delay = min(per_seed_base_delay * BACKOFF_MULTIPLIER, BACKOFF_MAX_DELAY)
+            per_seed_base_delay = min(
+                per_seed_base_delay * BACKOFF_MULTIPLIER, BACKOFF_MAX_DELAY
+            )
         else:
             # slowly relax (optional): keep it steady to be safe
             pass
@@ -239,14 +250,30 @@ class Crawler:
                 if DEBUG:
                     print(url_lower)
 
-                skip_extensions = ['.pdf', '.zip', '.rar', '.7z', '.jpg', '.jpeg', 
-                                 '.png', '.gif', '.svg', '.webp', '.bmp', '.mp4', 
-                                 '.webm', '.avi', '.mp3', '.wav']
+                skip_extensions = [
+                    ".pdf",
+                    ".zip",
+                    ".rar",
+                    ".7z",
+                    ".jpg",
+                    ".jpeg",
+                    ".png",
+                    ".gif",
+                    ".svg",
+                    ".webp",
+                    ".bmp",
+                    ".mp4",
+                    ".webm",
+                    ".avi",
+                    ".mp3",
+                    ".wav",
+                ]
                 if any(url_lower.endswith(ext) for ext in skip_extensions):
                     continue
                 if urlsplit(r.url).path:
                     safe = (
-                        urlsplit(r.url).path.replace("https://", "")
+                        urlsplit(r.url)
+                        .path.replace("https://", "")
                         .replace("http://", "")
                         .replace("/", "*")
                         .replace("?", "%3F")
@@ -269,6 +296,7 @@ class Crawler:
                     page_md_path = self.md_dir / f"{safe[:50]}.md"
                     page_md_path.write_text(r.markdown, encoding="utf-8")
 
+                ########## Path-like Directory Saving ###################
                 # parsed = urlparse(r.url)
                 # domain = parsed.netloc.replace("www.", "")
                 # path = parsed.path or "/"
@@ -278,7 +306,6 @@ class Crawler:
                 # if not safe_name or safe_name.endswith("."):
                 #     safe_name = f"{domain}_index"
                 # safe_name = safe_name[:200]  # Prevent too-long names
-
 
                 # if DEBUG:
                 #     pprint(r.markdown)
@@ -293,7 +320,6 @@ class Crawler:
                     page_md_path = self.md_dir / f"{safe_name}.md"
                     page_md_path.write_text(r.markdown, encoding="utf-8")
 
-
                 rec = {
                     "url": r.url,
                     "status": getattr(r, "http_status", None),
@@ -306,10 +332,12 @@ class Crawler:
                 self.written += 1
                 self.pages_crawled += 1
 
-            print(f"  -> Seed wrote {self.written} pages (total so far: {self.pages_crawled}).")
+            print(
+                f"  -> Seed wrote {self.written} pages (total so far: {self.pages_crawled})."
+            )
 
             # Respect a seed pause with jitter (looks more human, reduces burstiness)
-            #if idx < len(seeds):
+            # if idx < len(seeds):
             pause = random.uniform(SEED_PAUSE_MIN_SEC, SEED_PAUSE_MAX_SEC)
             if self.blocked_rate >= BACKOFF_THRESHOLD_RATE:
                 pause *= 1.5
@@ -338,9 +366,10 @@ async def run_scraper():
             except Exception as e:
                 logger.log_error(f"Failed crawling {seed_dict['url']}: {e}")
 
-    print(f"Starting crawl of {len(ALL_SEEDS)} seeds with concurrency={BASE_CONCURRENCY}")
+    print(
+        f"Starting crawl of {len(ALL_SEEDS)} seeds with concurrency={BASE_CONCURRENCY}"
+    )
     await asyncio.gather(*(sem_crawl(seed) for seed in ALL_SEEDS))
-
 
 
 if __name__ == "__main__":
@@ -352,31 +381,31 @@ if __name__ == "__main__":
     parser.add_argument("-u", "--url", help="Single website URL to crawl")
     parser.add_argument("-p", "--prioritize", help="Keyword list to prioritize")
     parser.add_argument(
-        "-s", 
-        "--seedfile", 
-        help="seeds.txt relative path to scrape from"
+        "-s", "--seedfile", help="seeds.txt relative path to scrape from"
     )
     parser.add_argument(
-        "-d", 
-        "--depth", 
-        help="Depth for crawling; 0 -> only given page; 1 -> +1 hop..", 
-        type=int
+        "-d",
+        "--depth",
+        help="Depth for crawling; 0 -> only given page; 1 -> +1 hop..",
+        type=int,
     )
     parser.add_argument(
-        "-m", 
-        "--maxpages", 
-        help="Max pages per seed for limiting crawling", 
-        type=int
+        "-m", "--maxpages", help="Max pages per seed for limiting crawling", type=int
     )
     parser.add_argument(
-        "-b", 
-        "--blocked", 
-        help="Space separated string of Domains to avoid scraping", 
+        "-b",
+        "--blocked",
+        help="Space separated string of Domains to avoid scraping",
+    )
+    parser.add_argument(
+        "-up",
+        "--urlpattern",
+        help="Space Separated keywords to look for in the URL",
     )
     args = parser.parse_args()
 
     if args.seedfile:
-        SEEDS_FILE=args.seedfile
+        SEEDS_FILE = args.seedfile
 
     if args.url:
         if len(args.url.split(" ")) == 1:
@@ -385,12 +414,16 @@ if __name__ == "__main__":
         else:
             ALL_SEEDS = args.url.split(" ")
 
+    # The following flag is for matching content based on the given KEYWORDS
+    #   Uses a simple scoring algorithm, however, hasn't been implemented properly
     if args.prioritize:
-        CONTENT_RELEVANCE_QUERY = args.prioritize
+        # CONTENT_RELEVANCE_QUERY = args.prioritize
 
-        priority_list = [a.strip() for a in str(args.prioritize).split(" ")]
+        priority_list = [a.strip().lower() for a in str(args.prioritize).split(" ")]
+
         if priority_list:
             KEYWORDS = priority_list
+            print(KEYWORDS)
 
     if args.depth is not None:
         MAX_DEPTH = args.depth
@@ -400,10 +433,13 @@ if __name__ == "__main__":
 
     if args.blocked is not None:
         BLOCKED_DOMAINS = args.blocked.split(" ")
-
+    
+    if args.urlpattern:
+        patterns = args.urlpattern.lower().strip().split(" ")
+        for p in patterns:
+            URL_FILTERS.append(f"*{p}*") # Convert the keywords into a wild-card pattern
 
     try:
         asyncio.run(run_scraper())
     except KeyboardInterrupt:
         print("\nCancelled by user.")
-

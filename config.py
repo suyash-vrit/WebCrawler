@@ -1,12 +1,12 @@
 from enum import Enum
 
 # For dev purposes
-DEBUG = True
+DEBUG = False
 
 # ========= USER SETTINGS (SAFE & POLITE) =========
 SEEDS_FILE = "seeds.txt"
-MAX_DEPTH = 2  # 0 = only seeds; 1 = seeds + 1 hop; 2 = +2 hops
-MAX_PAGES = 50  # crawlers runs in concurrent manner, thus, this prolly controls the per-seed max(?)
+MAX_DEPTH = 1  # 0 = only seeds; 1 = seeds + 1 hop; 2 = +2 hops
+MAX_PAGES = 100  # crawlers runs in concurrent manner, thus, this prolly controls the per-seed max(?)
 GLOBAL_MAX_PAGES = 200
 
 
@@ -38,5 +38,7 @@ class Mode(Enum):
     BESTFIRST_STRATEGY = 2
     ADAPTIVE_STRATEGY = 2
 
-STRATEGY = Mode.BFS_STRATEGY
+STRATEGY = Mode.BESTFIRST_STRATEGY
 CONTENT_RELEVANCE_QUERY = ""
+
+URL_FILTERS = []
