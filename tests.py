@@ -2,7 +2,6 @@ import unittest
 import json
 
 
-
 class UrlTest(unittest.TestCase):
     def check_keyword_presence(self, fp: str, keywords: list):
         """
@@ -14,11 +13,11 @@ class UrlTest(unittest.TestCase):
         bools = []
 
         try:
-            with open(fp, 'r') as f:
+            with open(fp, "r") as f:
                 lines = f.readlines()
                 for line in lines:
                     dictobj = json.loads(line)
-                    urls.append(dictobj['url'])
+                    urls.append(dictobj["url"])
 
         except FileNotFoundError:
             raise Exception(f"{fp} not found.")
@@ -27,7 +26,5 @@ class UrlTest(unittest.TestCase):
             bools.append(any(k in u for k in keywords))
 
         ideal = [True for _ in urls]
-        
+
         return self.assertEqual(bools, ideal)
-
-

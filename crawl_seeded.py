@@ -5,7 +5,7 @@ import asyncio
 import json
 import argparse
 import random
-from pprint import pprint
+import math
 
 from crawl4ai import (
     AsyncWebCrawler,
@@ -19,11 +19,11 @@ from crawl4ai.deep_crawling import (
     BFSDeepCrawlStrategy,
     FilterChain
 )
-from crawl4ai.deep_crawling.filters import DomainFilter
+from crawl4ai.deep_crawling.filters import ContentRelevanceFilter, DomainFilter
 from crawl4ai.content_filter_strategy import BM25ContentFilter, PruningContentFilter
 from crawl4ai.deep_crawling.scorers import KeywordRelevanceScorer
-import re
-from urllib.parse import urlparse
+from urllib.parse import urlsplit
+from pprint import pprint
 
 
 from config import *
@@ -42,8 +42,8 @@ class Crawler:
     def __init__(self, seed_dict):
         self.seed_dict = seed_dict
         self.enabled_adaptive_strategy = False
-        self.enabled_bfs_strategy = False
-        self.enabled_bestfirst_strategy = True
+        self.enabled_bfs_strategy = not (Mode.BFS_STRATEGY.value - STRATEGY.value)
+        self.enabled_bestfirst_strategy = not (Mode.BESTFIRST_STRATEGY.value - STRATEGY.value)
         self.pages_crawled = 0
         self.written = 0 # no. of md pages written (for tracking MAX_PAGES limit)
         self.results = []
@@ -54,6 +54,7 @@ class Crawler:
         self.allowed_domain= seed_dict['allowed_domain']
         self.blocked_rate = 0
         self.blocked_domains = BLOCKED_DOMAINS 
+        self.content_relevance_filter_q = CONTENT_RELEVANCE_QUERY
 
         # Rudimentary Check
         seed = seed_dict["url"]
@@ -87,7 +88,7 @@ class Crawler:
             )
             return high_precision_config
         else:
-            logger.error("Adaptive Strategy isn't enabled; no configs returned")
+            logger.log_error("Adaptive Strategy isn't enabled; no configs returned")
             return None
 
     def get_filter(self):
@@ -106,12 +107,19 @@ class Crawler:
             user_query="product"
         )
 
-        return FilterChain([domain_filter])
+        content_filter = ContentRelevanceFilter(
+            query=self.content_relevance_filter_q,
+            threshold = 0.95 if self.content_relevance_filter_q else 0,
+        )
+
+        return FilterChain([domain_filter, content_filter])
 
     def get_strategy(self):
         strategy = None
         keyword_scorer = KeywordRelevanceScorer(keywords=KEYWORDS, weight=1)
         if self.enabled_bestfirst_strategy:
+            if DEBUG:
+                logger.log_debug("Using BestFirstStrategy")
             strategy = BestFirstCrawlingStrategy(
                 max_pages=MAX_PAGES,
                 max_depth=MAX_DEPTH,
@@ -120,11 +128,13 @@ class Crawler:
                 filter_chain = self.get_filter()
             )
         elif self.enabled_bfs_strategy:
+            if DEBUG:
+                logger.log_debug("Using BFSStrategy")
             strategy = BFSDeepCrawlStrategy(
                 max_depth=MAX_DEPTH,               # Crawl initial page + 2 levels deep
                 include_external=False,    # Stay within the same domain
                 max_pages=MAX_PAGES,              # Maximum number of pages to crawl (optional)
-                score_threshold=0.3,       # Minimum score for URLs to be crawled (optional)
+                score_threshold=0.3 if KEYWORDS else float(-1 * math.inf),       # Minimum score for URLs to be crawled (optional)
                 url_scorer = keyword_scorer if KEYWORDS else None,
                 filter_chain = self.get_filter()
             )
@@ -217,6 +227,9 @@ class Crawler:
 
     def save_json(self):
         with open(self.jsonl_path, "a", encoding="utf-8") as jf:
+            if DEBUG:
+                print(self.batch)
+
             for r in self.batch:
                 if not r or not getattr(r, "markdown", None):
                     continue
@@ -231,53 +244,55 @@ class Crawler:
                                  '.webm', '.avi', '.mp3', '.wav']
                 if any(url_lower.endswith(ext) for ext in skip_extensions):
                     continue
-
-                parsed = urlparse(r.url)
-                domain = parsed.netloc.replace("www.", "")
-                path = parsed.path or "/"
-                clean_path = re.sub(r"^/|/$", "", path)
-                clean_path = re.sub(r"[<>|:*?\"\\]", "", clean_path)
-                safe_name = f"{domain}_{clean_path}".strip("_")
-                if not safe_name or safe_name.endswith("."):
-                    safe_name = f"{domain}_index"
-                safe_name = safe_name[:200]  # Prevent too-long names
-
-                # if urlsplit(r.url).path:
-                #     safe = (
-                #         urlsplit(r.url).path.replace("https://", "")
-                #         .replace("http://", "")
-                #         .replace("/", "_")
-                #         .replace("?", "%3F")
-                #         .replace("#", "%23")
-                #     )
-                # else:
-                #     safe = (
-                #         r.url.replace("https://", "")
-                #         .replace("http://", "")
-                #         .replace("/", "_")
-                #         .replace("?", "%3F")
-                #         .replace("#", "%23")
-                #     )
-
+                if urlsplit(r.url).path:
+                    safe = (
+                        urlsplit(r.url).path.replace("https://", "")
+                        .replace("http://", "")
+                        .replace("/", "*")
+                        .replace("?", "%3F")
+                        .replace("#", "%23")
+                    )
+                else:
+                    safe = (
+                        r.url.replace("https://", "")
+                        .replace("http://", "")
+                        .replace("/", "_")
+                        .replace("?", "%3F")
+                        .replace("#", "%23")
+                    )
                 if DEBUG:
                     pprint(r.markdown)
+                try:
+                    page_md_path = self.md_dir / f"{safe}.md"
+                    page_md_path.write_text(r.markdown, encoding="utf-8")
+                except:
+                    page_md_path = self.md_dir / f"{safe[:50]}.md"
+                    page_md_path.write_text(r.markdown, encoding="utf-8")
 
-                page_md_path = self.md_dir / f"{safe_name}.md"
+                # parsed = urlparse(r.url)
+                # domain = parsed.netloc.replace("www.", "")
+                # path = parsed.path or "/"
+                # clean_path = re.sub(r"^/|/$", "", path)
+                # clean_path = re.sub(r"[<>|:*?\"\\]", "", clean_path)
+                # safe_name = f"{domain}_{clean_path}".strip("_")
+                # if not safe_name or safe_name.endswith("."):
+                #     safe_name = f"{domain}_index"
+                # safe_name = safe_name[:200]  # Prevent too-long names
+
+
+                # if DEBUG:
+                #     pprint(r.markdown)
+
+                page_md_path = self.md_dir / f"{safe}.md"
                 try:
                     page_md_path.parent.mkdir(parents=True, exist_ok=True)
                     page_md_path.write_text(r.markdown, encoding="utf-8")
                 except Exception as e:
                     print(f"Failed to write {page_md_path}: {e}")
-                    safe_name = safe_name[:50] + "_fallback"
+                    safe_name = safe[:50] + "_fallback"
                     page_md_path = self.md_dir / f"{safe_name}.md"
                     page_md_path.write_text(r.markdown, encoding="utf-8")
 
-                # try:
-                #     page_md_path = self.md_dir / f"{safe_name}.md"
-                #     page_md_path.write_text(r.markdown, encoding="utf-8")
-                # except:
-                #     page_md_path = self.md_dir / f"{safe_name[:50]}.md"
-                #     page_md_path.write_text(r.markdown, encoding="utf-8")
 
                 rec = {
                     "url": r.url,
@@ -371,6 +386,8 @@ if __name__ == "__main__":
             ALL_SEEDS = args.url.split(" ")
 
     if args.prioritize:
+        CONTENT_RELEVANCE_QUERY = args.prioritize
+
         priority_list = [a.strip() for a in str(args.prioritize).split(" ")]
         if priority_list:
             KEYWORDS = priority_list
@@ -383,6 +400,7 @@ if __name__ == "__main__":
 
     if args.blocked is not None:
         BLOCKED_DOMAINS = args.blocked.split(" ")
+
 
     try:
         asyncio.run(run_scraper())

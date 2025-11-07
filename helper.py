@@ -4,6 +4,7 @@ from pathlib import Path
 
 DATAPATH_BASE = Path("scraped")
 
+
 class BasicLogger:
     def __init__(self, log_file="logs.txt"):
         self.file_enabled = False
@@ -18,25 +19,22 @@ class BasicLogger:
         print(Fore.CYAN + info + Style.RESET_ALL)
 
         if self.file_enabled:
-            with open(self.log_file, 'a') as lf:
+            with open(self.log_file, "a") as lf:
                 lf.write(f"{info}\n")
-                 
-    
+
     def log_debug(self, msg: str):
         debug = f"[DEBUG] {msg}"
         print(Fore.YELLOW + debug + Style.RESET_ALL)
         if self.file_enabled:
-            with open(self.log_file, 'a') as lf:
+            with open(self.log_file, "a") as lf:
                 lf.write(f"{debug}\n")
-    
-    
+
     def log_error(self, msg: str):
         error = f"[ERROR] {msg}"
         print(Fore.RED + error + Style.RESET_ALL)
         if self.file_enabled:
-            with open(self.log_file, 'a') as lf:
+            with open(self.log_file, "a") as lf:
                 lf.write(f"{error}\n")
-
 
 
 def _normalize_url(u: str) -> str:
@@ -56,11 +54,10 @@ def initialize_seeds_vars(file):
     seeds = []
     seed_vars = []
     try:
-        with open(file, 'r') as f:
+        with open(file, "r") as f:
             seeds = f.readlines()
     except FileNotFoundError:
         logger.log_error(f"File {file} not found")
-
 
     if seeds:
         for seed in seeds:
@@ -74,9 +71,9 @@ def initialize_seeds_vars(file):
                     {
                         "url": _normalize_url(seed.strip()),
                         "out_dir": OUT_DIR,
-                        "md_dir" : OUT_DIR / "md",
-                        "jsonl_path" : JSONL_PATH,
-                        "allowed_domain" : f"{url_split.netloc}",
+                        "md_dir": OUT_DIR / "md",
+                        "jsonl_path": JSONL_PATH,
+                        "allowed_domain": f"{url_split.netloc}",
                     }
                 )
 
@@ -94,6 +91,7 @@ def initialize_seeds_vars(file):
 
     return seed_vars
 
+
 def initialize_single_url(url):
     logger = BasicLogger()
     url_split = urlsplit(url.strip())
@@ -103,12 +101,12 @@ def initialize_single_url(url):
         JSONL_PATH = OUT_DIR / "index.jsonl"
 
         seed = {
-                "url": _normalize_url(url.strip()),
-                "out_dir": OUT_DIR,
-                "md_dir" : OUT_DIR / "md",
-                "jsonl_path" : JSONL_PATH,
-                "allowed_domain" : f"{url_split.netloc}",
-            }
+            "url": _normalize_url(url.strip()),
+            "out_dir": OUT_DIR,
+            "md_dir": OUT_DIR / "md",
+            "jsonl_path": JSONL_PATH,
+            "allowed_domain": f"{url_split.netloc}",
+        }
 
         # directory shenanigans
         OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -133,7 +131,6 @@ def chunk_markdown(md: str, target_chars: int = 1200):
     if buf:
         chunks.append("\n\n".join(buf))
     return chunks
-
 
 
 def count_block_signals(results) -> float:
@@ -161,4 +158,3 @@ def count_block_signals(results) -> float:
     if total == 0:
         return 0.0
     return blocked / float(total)
-
