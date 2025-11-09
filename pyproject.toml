@@ -10,4 +10,5 @@ dependencies = [
     "flask>=3.1.2",
     "ipython>=9.6.0",
     "pywebview>=6.1",
+    "qtpy>=2.4.3",
 ]

@@ -3079,6 +3079,7 @@ dependencies = [
     { name = "flask" },
     { name = "ipython" },
     { name = "pywebview" },
+    { name = "qtpy" },
 ]
 
 [package.metadata]
@@ -3088,6 +3089,7 @@ requires-dist = [
     { name = "flask", specifier = ">=3.1.2" },
     { name = "ipython", specifier = ">=9.6.0" },
     { name = "pywebview", specifier = ">=6.1" },
+    { name = "qtpy", specifier = ">=2.4.3" },
 ]
 
 [[package]]
