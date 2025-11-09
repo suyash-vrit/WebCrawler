@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <title>WebCrawler GUI</title>
+    <script src="https://cdn.tailwindcss.com"></script> <link
+      href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      .log-info {
+        @apply text-blue-600;
+      }
+      .log-error {
+        @apply text-red-600;
+      }
+      .log-success {
+        @apply text-green-600;
+      }
+      .log-debug {
+        @apply text-gray-500;
+      }
+    </style>
+  </head>
+  <body class="h-full bg-gray-50 flex flex-col">
+    <!-- Header -->
+    <header
+      class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-4 shadow-lg"
+    >
+      <h1 class="text-2xl font-bold flex items-center gap-2">
+        <svg
+          class="w-8 h-8"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+          />
+        </svg>
+        WebCrawler GUI
+      </h1>
+    </header>
+
+    <div
+      class="flex-1 flex flex-col lg:flex-row gap-4 p-4 max-w-7xl mx-auto w-full"
+    >
+      <!-- ==== LEFT PANEL – SETTINGS ==== -->
+      <section class="lg:w-96 bg-white rounded-xl shadow-md p-6 space-y-5">
+        <h2 class="text-lg font-semibold text-gray-800">Crawl Settings</h2>
+
+        <form id="crawlForm" class="space-y-4">
+          <!-- Single URL -->
+          <div class="form-control">
+            <label class="label"
+              ><span class="label-text font-medium">Single URL</span></label
+            >
+            <input
+              type="url"
+              name="url"
+              placeholder="https://example.com"
+              class="input input-bordered w-full"
+            />
+          </div>
+
+          <div class="divider">OR</div>
+
+          <!-- Seed file -->
+          <div class="form-control">
+            <label class="label"
+              ><span class="label-text font-medium"
+                >Seeds file (relative path)</span
+              ></label
+            >
+            <input
+              type="text"
+              name="seedfile"
+              placeholder="seeds.txt"
+              value="seeds.txt"
+              class="input input-bordered w-full"
+            />
+          </div>
+
+          <!-- Optional parameters -->
+          <div class="form-control">
+            <label class="label"
+              ><span class="label-text"
+                >Prioritize keywords (space-separated)</span
+              ></label
+            >
+            <input
+              type="text"
+              name="prioritize"
+              placeholder="pricing api docs"
+              class="input input-bordered w-full"
+            />
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div class="form-control">
+              <label class="label"><span class="label-text">Depth</span></label>
+              <input
+                type="number"
+                name="depth"
+                min="0"
+                max="5"
+                value="1"
+                class="input input-bordered"
+              />
+            </div>
+            <div class="form-control">
+              <label class="label"
+                ><span class="label-text">Max pages per seed</span></label
+              >
+              <input
+                type="number"
+                name="maxpages"
+                min="1"
+                max="2000"
+                value="100"
+                class="input input-bordered"
+              />
+            </div>
+          </div>
+
+          <div class="form-control">
+            <label class="label"
+              ><span class="label-text"
+                >Blocked domains (space-separated)</span
+              ></label
+            >
+            <input
+              type="text"
+              name="blocked"
+              placeholder="ads.example.com login.example.com"
+              class="input input-bordered w-full"
+            />
+          </div>
+
+          <div class="form-control">
+            <label class="label"
+              ><span class="label-text"
+                >URL pattern keywords (space-separated)</span
+              ></label
+            >
+            <input
+              type="text"
+              name="urlpattern"
+              placeholder="blog docs api"
+              class="input input-bordered w-full"
+            />
+          </div>
+
+          <div class="pt-4 flex gap-2">
+            <button type="submit" id="startBtn" class="btn btn-primary flex-1">
+              <span class="loading loading-spinner hidden" id="loader"></span>
+              Start Crawl
+            </button>
+            <button
+              type="button"
+              id="stopBtn"
+              class="btn btn-error flex-1 hidden"
+            >
+              Stop
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- ==== RIGHT PANEL – LOGS + RESULTS ==== -->
+      <section class="flex-1 flex flex-col gap-4">
+        <!-- Results table -->
+        <div class="bg-white rounded-xl shadow-md p-5">
+          <h2
+            class="text-lg font-semibold mb-3 text-gray-800 flex items-center gap-2"
+          >
+            <svg
+              class="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
+            </svg>
+            Crawl Results
+          </h2>
+          <div class="overflow-x-auto">
+            <table class="table table-zebra w-full">
+              <thead>
+                <tr>
+                  <th>Seed URL</th>
+                  <th>Output Directory</th>
+                </tr>
+              </thead>
+              <tbody id="resultsBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Live logs -->
+      <div class="bg-gray-900 text-gray-100 rounded-xl shadow-md p-5 flex flex-col h-96">
+          <div class="flex justify-between items-center mb-2">
+            <h2 class="text-lg font-semibold flex items-center gap-2">
+              Live Logs
+            </h2>
+            <button id="clearLogs" class="btn btn-xs btn-ghost">Clear</button>
+          </div>
+          <div
+            id="logContainer"
+            class="flex-1 font-mono text-sm overflow-y-auto bg-gray-800 rounded p-2 space-y-1
+                   scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800"
+          ></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ==== JS ==== -->
+    <script>
+      const form = document.getElementById("crawlForm");
+      const startBtn = document.getElementById("startBtn");
+      const stopBtn = document.getElementById("stopBtn");
+      const loader = document.getElementById("loader");
+      const logContainer = document.getElementById("logContainer");
+      const resultsBody = document.getElementById("resultsBody");
+      const clearLogsBtn = document.getElementById("clearLogs");
+
+      let poll;
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const payload = Object.fromEntries(new FormData(form));
+        startBtn.disabled = true;
+        startBtn.classList.add("loading");
+        loader.classList.remove("hidden");
+        stopBtn.classList.remove("hidden");
+
+        await fetch("/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        startPolling();
+      });
+
+      stopBtn.addEventListener("click", async () => {
+        await fetch("/stop", { method: "POST" });
+      });
+
+      clearLogsBtn.addEventListener(
+        "click",
+        () => (logContainer.innerHTML = "")
+      );
+
+      async function startPolling() {
+        if (poll) clearInterval(poll);
+        poll = setInterval(async () => {
+          const r = await fetch("/status");
+          const d = await r.json();
+
+          // ---- logs ----
+          const newLogs = d.logs.slice(logContainer.children.length);
+          newLogs.forEach((l) => {
+            const div = document.createElement("div");
+            div.className = `log-${l.level}`;
+            div.innerHTML = `<span class="text-xs text-gray-500">[${l.time}]</span> ${l.msg}`;
+            logContainer.appendChild(div);
+          });
+          logContainer.scrollTop = logContainer.scrollHeight;
+
+          // ---- results ----
+          // resultsBody.innerHTML = "";
+          // d.results.forEach((r) => {
+          //   const tr = document.createElement("tr");
+          //   tr.innerHTML = `
+          //   <td class="max-w-xs truncate">
+          //     <a href="${r.seed}" target="_blank" class="link link-primary">${r.seed}</a>
+          //   </td>
+          //   <td class="font-mono text-xs">${r.directory}</td>`;
+          //   resultsBody.appendChild(tr);
+          // });
+          // ---- results ----
+          resultsBody.innerHTML = '';
+          d.results.forEach(r => {
+            const tr = document.createElement('tr');
+          
+            // Folder name (last part)
+            const folderName = r.directory.split('/').pop().split('\\').pop();
+          
+            tr.innerHTML = `
+              <td class="font-mono text-sm">${folderName}</td>
+              <td>
+                <button 
+                  onclick="window.pywebview.api.open_folder('${r.abs_path}')"
+                  class="link link-primary text-sm hover:underline">
+                  Open Folder
+                </button>
+              </td>`;
+            resultsBody.appendChild(tr);
+          });
+          // ---- UI state ----
+          if (!d.running) {
+            clearInterval(poll);
+            startBtn.disabled = false;
+            startBtn.classList.remove("loading");
+            loader.classList.add("hidden");
+            stopBtn.classList.add("hidden");
+          }
+        }, 850);
+      }
+
+      // initial load
+      startPolling();
+    </script>
+  </body>
+</html>
