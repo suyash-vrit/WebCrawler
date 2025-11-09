@@ -3,6 +3,15 @@
 ## Introduction
 The web crawler utilizes the `crawl4ai` library, and has a comprehensive list of flags that can be used to tune the parameters like `depth`, `max_pages`, `seeds`, `blocked_domains/paths`, `url_patterns`.
 
+
+## Running the GUI
+```
+git clone https://github.com/suyash-vrit/WebCrawler
+cd WebCrawler
+uv sync
+uv run webview_gui/app.py
+```
+
 ## Flags
 - `--depth` `-d`: Controls the DEPTH of crawling (0 = only the given URL page; 1 = give URL + 1 hop; so on)
 - `--maxpages` `-m`: No. of pages to crawl *per seed*
@@ -10,6 +19,8 @@ The web crawler utilizes the `crawl4ai` library, and has a comprehensive list of
 - `--blocked` `-b`: Space separated string of URLs/URL paths to avoid scraping
 - `--urlpattern` `-up`: Space separated string of patterns/keywords to look for in the URL
 - `--url` `-u`: Space-separated URLs that act as seeds; can be passed instead of `--seedfile`
+
+
 
 ## Usage Examples
 

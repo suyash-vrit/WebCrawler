@@ -420,7 +420,7 @@ if __name__ == "__main__":
     # Create window and attach API
     window = webview.create_window(
         title="WebCrawler GUI",
-        url="http://127.0.0.1:5000",
+        url="http://0.0.0.0:5000",
         width=1280,
         height=820,
         resizable=True,
