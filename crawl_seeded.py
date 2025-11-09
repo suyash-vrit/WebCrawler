@@ -11,6 +11,7 @@ from crawl4ai import (
     AsyncWebCrawler,
     BrowserConfig,
     AdaptiveConfig,
+    AdaptiveCrawler,
     CrawlerRunConfig,
     DefaultMarkdownGenerator,
 )
@@ -19,7 +20,11 @@ from crawl4ai.deep_crawling import (
     BFSDeepCrawlStrategy,
     FilterChain,
 )
-from crawl4ai.deep_crawling.filters import ContentRelevanceFilter, DomainFilter, URLPatternFilter
+from crawl4ai.deep_crawling.filters import (
+    ContentRelevanceFilter,
+    DomainFilter,
+    URLPatternFilter,
+)
 from crawl4ai.content_filter_strategy import BM25ContentFilter, PruningContentFilter
 from crawl4ai.deep_crawling.scorers import KeywordRelevanceScorer
 from urllib.parse import urlsplit
@@ -39,7 +44,7 @@ from helper import (
 # ==============================
 
 
-ALL_SEEDS = initialize_seeds_vars(SEEDS_FILE)
+# ALL_SEEDS = initialize_seeds_vars(SEEDS_FILE)
 logger = BasicLogger()
 
 
@@ -63,6 +68,7 @@ class Crawler:
         self.blocked_domains = BLOCKED_DOMAINS
         self.content_relevance_filter_q = CONTENT_RELEVANCE_QUERY
         self.enabled_url_matching = False
+        self.keyword_scorer = KeywordRelevanceScorer(keywords=KEYWORDS, weight=1)
 
         # Rudimentary Check
         seed = seed_dict["url"]
@@ -121,14 +127,16 @@ class Crawler:
         # )
 
         url_filter = URLPatternFilter(
-            patterns = URL_FILTERS,
+            patterns=URL_FILTERS,
         )
 
-        return FilterChain([domain_filter]) #, url_filter])
+        if url_filter:
+            return FilterChain([domain_filter, url_filter])
+
+        return FilterChain([domain_filter])  # , url_filter])
 
     def get_strategy(self):
         strategy = None
-        keyword_scorer = KeywordRelevanceScorer(keywords=KEYWORDS, weight=1)
         if self.enabled_bestfirst_strategy:
             if DEBUG:
                 logger.log_debug("Using BestFirstStrategy")
@@ -136,7 +144,7 @@ class Crawler:
                 max_pages=MAX_PAGES,
                 max_depth=MAX_DEPTH,
                 include_external=False,
-                url_scorer=keyword_scorer if KEYWORDS else None,
+                url_scorer=self.keyword_scorer if KEYWORDS else None,
                 filter_chain=self.get_filter(),
             )
         elif self.enabled_bfs_strategy:
@@ -149,7 +157,7 @@ class Crawler:
                 score_threshold=(
                     0.1 if KEYWORDS else float(-1 * math.inf)
                 ),  # Minimum score for URLs to be crawled (optional)
-                url_scorer=keyword_scorer if KEYWORDS else None,
+                url_scorer=self.keyword_scorer if KEYWORDS else None,
                 filter_chain=self.get_filter(),
             )
 
@@ -199,6 +207,7 @@ class Crawler:
             delay_before_return_html=1,  # Small delay before capturing HTML
             # Configure deep crawling strategy
             deep_crawl_strategy=self.get_strategy(),
+            scan_full_page=True,
         )
 
         # run_cfg = AdaptiveConfig(
@@ -207,6 +216,33 @@ class Crawler:
         # )
 
         print(f"[Seed X] {seed} | delay={per_seed_delay:.2f}s | conc={concurrency}")
+        # high_precision_config = AdaptiveConfig(
+        #     confidence_threshold=0.9,  # Very high confidence required
+        #     max_pages=100,  # Allow more pages
+        #     top_k_links=20,  # Follow more links per page
+        #     min_gain_threshold=0.02,  # Lower threshold to continue
+        # )
+        # async with AsyncWebCrawler(verbose=True, config=browser_cfg) as crawler:
+        #     adaptive = AdaptiveCrawler(crawler, config=high_precision_config)  # uses default strategy
+
+        #     result = await adaptive.digest(
+        #         start_url=seed,
+        #         query=" ".join(KEYWORDS),
+        #     )
+
+        #     # Show summary
+        #     adaptive.print_stats(detailed=False)
+
+        #     # Show top 5 relevant pages
+        #     relevant_pages = adaptive.get_relevant_content(top_k=20)
+        #     for i, page in enumerate(relevant_pages, 1):
+        #         print(f"{i}. {page['url']}")
+        #         print(f"   Score: {page['score']:.2%}")
+        #         snippet = (page['content'] or "")[:200].replace("\n", " ")
+        #         print(f"   Preview: {snippet}...")
+
+        #     print(f"\nConfidence: {adaptive.confidence:.2%}")
+        #     print(f"Total pages crawled: {len(result.crawled_urls)}")
 
         async with AsyncWebCrawler(config=browser_cfg) as crawler:
 
@@ -219,6 +255,10 @@ class Crawler:
 
             if not isinstance(self.batch, list):
                 self.batch = [self.batch] if self.batch else []
+            
+            for r in self.batch:
+                if self.keyword_scorer._calculate_score(r.url) != 1:
+                    continue
 
         # Backoff heuristic: if we see many 429/403/empty, slow down future seeds
         self.blocked_rate = count_block_signals(self.batch)
@@ -243,6 +283,9 @@ class Crawler:
 
             for r in self.batch:
                 if not r or not getattr(r, "markdown", None):
+                    continue
+
+                if self.keyword_scorer._calculate_score(r.url) != 1:
                     continue
 
                 url_lower = r.url.lower()
@@ -413,13 +456,14 @@ if __name__ == "__main__":
             print(ALL_SEEDS)
         else:
             ALL_SEEDS = args.url.split(" ")
+    else:
+        ALL_SEEDS = initialize_seeds_vars(SEEDS_FILE)
 
     # The following flag is for matching content based on the given KEYWORDS
     #   Uses a simple scoring algorithm, however, hasn't been implemented properly
     if args.prioritize:
         # CONTENT_RELEVANCE_QUERY = args.prioritize
-
-        priority_list = [a.strip().lower() for a in str(args.prioritize).split(" ")]
+        priority_list = [a.strip() for a in str(args.prioritize).split(" ")]
 
         if priority_list:
             KEYWORDS = priority_list
@@ -433,11 +477,13 @@ if __name__ == "__main__":
 
     if args.blocked is not None:
         BLOCKED_DOMAINS = args.blocked.split(" ")
-    
+
     if args.urlpattern:
         patterns = args.urlpattern.lower().strip().split(" ")
         for p in patterns:
-            URL_FILTERS.append(f"*{p}*") # Convert the keywords into a wild-card pattern
+            URL_FILTERS.append(
+                f"*{p}*"
+            )  # Convert the keywords into a wild-card pattern
 
     try:
         asyncio.run(run_scraper())
