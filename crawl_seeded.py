@@ -6,6 +6,7 @@ import json
 import argparse
 import random
 import math
+import uuid
 
 from crawl4ai import (
     AsyncWebCrawler,
@@ -46,6 +47,17 @@ from helper import (
 
 # ALL_SEEDS = initialize_seeds_vars(SEEDS_FILE)
 logger = BasicLogger()
+
+def calculate_score(string: str, keywords: list[str]):
+    matches = sum(1 for k in keywords if k in string)
+        
+    # Fast return paths
+    if not matches:
+        return 0.0
+    if matches == len(keywords):
+        return 1.0
+        
+    return matches / len(keywords)
 
 
 class Crawler:
@@ -210,39 +222,8 @@ class Crawler:
             scan_full_page=True,
         )
 
-        # run_cfg = AdaptiveConfig(
-        #     max_pages=MAX_PAGES,
-        #     max_depth=MAX_DEPTH,
-        # )
 
         print(f"[Seed X] {seed} | delay={per_seed_delay:.2f}s | conc={concurrency}")
-        # high_precision_config = AdaptiveConfig(
-        #     confidence_threshold=0.9,  # Very high confidence required
-        #     max_pages=100,  # Allow more pages
-        #     top_k_links=20,  # Follow more links per page
-        #     min_gain_threshold=0.02,  # Lower threshold to continue
-        # )
-        # async with AsyncWebCrawler(verbose=True, config=browser_cfg) as crawler:
-        #     adaptive = AdaptiveCrawler(crawler, config=high_precision_config)  # uses default strategy
-
-        #     result = await adaptive.digest(
-        #         start_url=seed,
-        #         query=" ".join(KEYWORDS),
-        #     )
-
-        #     # Show summary
-        #     adaptive.print_stats(detailed=False)
-
-        #     # Show top 5 relevant pages
-        #     relevant_pages = adaptive.get_relevant_content(top_k=20)
-        #     for i, page in enumerate(relevant_pages, 1):
-        #         print(f"{i}. {page['url']}")
-        #         print(f"   Score: {page['score']:.2%}")
-        #         snippet = (page['content'] or "")[:200].replace("\n", " ")
-        #         print(f"   Preview: {snippet}...")
-
-        #     print(f"\nConfidence: {adaptive.confidence:.2%}")
-        #     print(f"Total pages crawled: {len(result.crawled_urls)}")
 
         async with AsyncWebCrawler(config=browser_cfg) as crawler:
 
@@ -256,9 +237,10 @@ class Crawler:
             if not isinstance(self.batch, list):
                 self.batch = [self.batch] if self.batch else []
             
-            for r in self.batch:
-                if self.keyword_scorer._calculate_score(r.url) != 1:
-                    continue
+            # for r in self.batch:
+            #     if calculate_score(r.url, KEYWORDS) != 1:
+            #         logger.log_info(f"SCORE: {calculate_score(r.url, KEYWORDS)}")
+            #         continue
 
         # Backoff heuristic: if we see many 429/403/empty, slow down future seeds
         self.blocked_rate = count_block_signals(self.batch)
@@ -285,7 +267,8 @@ class Crawler:
                 if not r or not getattr(r, "markdown", None):
                     continue
 
-                if self.keyword_scorer._calculate_score(r.url) != 1:
+                if calculate_score(r.url, KEYWORDS) != 1:
+                    logger.log_info(f"SCORE: {calculate_score(r.url, KEYWORDS)}")
                     continue
 
                 url_lower = r.url.lower()
@@ -332,12 +315,12 @@ class Crawler:
                     )
                 if DEBUG:
                     pprint(r.markdown)
-                try:
-                    page_md_path = self.md_dir / f"{safe}.md"
-                    page_md_path.write_text(r.markdown, encoding="utf-8")
-                except:
-                    page_md_path = self.md_dir / f"{safe[:50]}.md"
-                    page_md_path.write_text(r.markdown, encoding="utf-8")
+                # try:
+                #     page_md_path = self.md_dir / f"{safe}.md"
+                #     page_md_path.write_text(r.markdown, encoding="utf-8")
+                # except:
+                #     page_md_path = self.md_dir / f"{safe[:50]}.md"
+                #     page_md_path.write_text(r.markdown, encoding="utf-8")
 
                 ########## Path-like Directory Saving ###################
                 # parsed = urlparse(r.url)
@@ -353,13 +336,13 @@ class Crawler:
                 # if DEBUG:
                 #     pprint(r.markdown)
 
-                page_md_path = self.md_dir / f"{safe}.md"
+                page_md_path = self.md_dir / f"{safe}_{str(uuid.uuid4())}.md"
                 try:
                     page_md_path.parent.mkdir(parents=True, exist_ok=True)
                     page_md_path.write_text(r.markdown, encoding="utf-8")
                 except Exception as e:
                     print(f"Failed to write {page_md_path}: {e}")
-                    safe_name = safe[:50] + "_fallback"
+                    safe_name = safe[:50] + "_" + str(uuid.uuid4())
                     page_md_path = self.md_dir / f"{safe_name}.md"
                     page_md_path.write_text(r.markdown, encoding="utf-8")
 
@@ -480,10 +463,13 @@ if __name__ == "__main__":
 
     if args.urlpattern:
         patterns = args.urlpattern.lower().strip().split(" ")
+        KEYWORDS = patterns
         for p in patterns:
             URL_FILTERS.append(
                 f"*{p}*"
             )  # Convert the keywords into a wild-card pattern
+        # print(KEYWORDS)
+        # print(URL_FILTERS)
 
     try:
         asyncio.run(run_scraper())

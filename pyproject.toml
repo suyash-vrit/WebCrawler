@@ -7,5 +7,7 @@ requires-python = ">=3.11"
 dependencies = [
     "colorama>=0.4.6",
     "crawl4ai[sync]>=0.7.6",
+    "flask>=3.1.2",
     "ipython>=9.6.0",
+    "pywebview>=6.1",
 ]
