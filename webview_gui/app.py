@@ -62,6 +62,10 @@ def start():
         pat = data["urlpattern"].strip()
         if pat: 
             cmd += ["--urlpattern", pat]
+    if data.get("blockedpattern"):
+        pat = data["blockedpattern"].strip()
+        if pat:
+            cmd += ["--blockedpattern", pat]
 
     CRAWL["running"] = True
     CRAWL["logs"] = []
@@ -72,6 +76,7 @@ def start():
 
     def _run():
         try:
+            print("Command: ", cmd)
             proc = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,

@@ -7,6 +7,7 @@ import argparse
 import random
 import math
 import uuid
+from pprint import pprint
 
 from crawl4ai import (
     AsyncWebCrawler,
@@ -48,15 +49,16 @@ from helper import (
 # ALL_SEEDS = initialize_seeds_vars(SEEDS_FILE)
 logger = BasicLogger()
 
+
 def calculate_score(string: str, keywords: list[str]):
     matches = sum(1 for k in keywords if k in string)
-        
+
     # Fast return paths
     if not matches:
         return 0.0
     if matches == len(keywords):
         return 1.0
-        
+
     return matches / len(keywords)
 
 
@@ -80,7 +82,10 @@ class Crawler:
         self.blocked_domains = BLOCKED_DOMAINS
         self.content_relevance_filter_q = CONTENT_RELEVANCE_QUERY
         self.enabled_url_matching = False
-        self.keyword_scorer = KeywordRelevanceScorer(keywords=KEYWORDS, weight=1)
+        if KEYWORDS:
+            self.keyword_scorer = KeywordRelevanceScorer(keywords=KEYWORDS, weight=1)
+        else:
+            self.keyword_scorer = None
 
         # Rudimentary Check
         seed = seed_dict["url"]
@@ -138,12 +143,26 @@ class Crawler:
         #     threshold=0.6 if self.content_relevance_filter_q else 0,
         # )
 
-        url_filter = URLPatternFilter(
-            patterns=URL_FILTERS,
-        )
+        if URL_FILTERS:
+            url_filter = URLPatternFilter(
+                patterns=URL_FILTERS,
+            )
 
-        if url_filter:
+            if BLOCKED_KEYWORDS:
+                block_filter = URLPatternFilter(
+                    patterns=BLOCKED_KEYWORDS,
+                    reverse=True,
+                )
+                return FilterChain([domain_filter, block_filter, url_filter])
+
             return FilterChain([domain_filter, url_filter])
+
+        if BLOCKED_KEYWORDS:
+            block_filter = URLPatternFilter(
+                patterns=BLOCKED_KEYWORDS,
+                reverse=True,
+            )
+            return FilterChain([domain_filter, block_filter])
 
         return FilterChain([domain_filter])  # , url_filter])
 
@@ -222,8 +241,10 @@ class Crawler:
             scan_full_page=True,
         )
 
+        logger.log_info(f"Strategy: {self.get_strategy()}")
 
         print(f"[Seed X] {seed} | delay={per_seed_delay:.2f}s | conc={concurrency}")
+        target_pages = MAX_PAGES
 
         async with AsyncWebCrawler(config=browser_cfg) as crawler:
 
@@ -232,11 +253,10 @@ class Crawler:
                 config=run_cfg,
             )
 
-            # print(self.batch)
 
             if not isinstance(self.batch, list):
                 self.batch = [self.batch] if self.batch else []
-            
+
             # for r in self.batch:
             #     if calculate_score(r.url, KEYWORDS) != 1:
             #         logger.log_info(f"SCORE: {calculate_score(r.url, KEYWORDS)}")
@@ -245,7 +265,9 @@ class Crawler:
         # Backoff heuristic: if we see many 429/403/empty, slow down future seeds
         self.blocked_rate = count_block_signals(self.batch)
         if self.blocked_rate >= BACKOFF_THRESHOLD_RATE:
-            print(f"  -> Block signals high ({self.blocked_rate:.0%}). Backing off.")
+            print(
+                f"  -> Block signals high ({self.blocked_rate:.0%}). Backing off."
+            )
             per_seed_base_delay = min(
                 per_seed_base_delay * BACKOFF_MULTIPLIER, BACKOFF_MAX_DELAY
             )
@@ -253,23 +275,22 @@ class Crawler:
             # slowly relax (optional): keep it steady to be safe
             pass
 
+
         # Save outputs - filter out unwanted file types at processing level
         self.save_json()
-        print(f"Done. Total pages saved: {self.pages_crawled}. Output: {self.out_dir}")
         self.results.extend(self.batch)
+        print(f"Done. Total pages saved: {self.pages_crawled}. Output: {self.out_dir}")
 
     def save_json(self):
         with open(self.jsonl_path, "a", encoding="utf-8") as jf:
-            if DEBUG:
-                print(self.batch)
-
             for r in self.batch:
                 if not r or not getattr(r, "markdown", None):
                     continue
 
-                if calculate_score(r.url, KEYWORDS) != 1:
-                    logger.log_info(f"SCORE: {calculate_score(r.url, KEYWORDS)}")
-                    continue
+                if KEYWORDS:
+                    if calculate_score(r.url, KEYWORDS) != 1:
+                        logger.log_info(f"SCORE: {calculate_score(r.url, KEYWORDS)}")
+                        continue
 
                 url_lower = r.url.lower()
 
@@ -342,7 +363,7 @@ class Crawler:
                     page_md_path.write_text(r.markdown, encoding="utf-8")
                 except Exception as e:
                     print(f"Failed to write {page_md_path}: {e}")
-                    safe_name = safe[:50] + "_" + str(uuid.uuid4())
+                    safe_name = safe[:42] + "_" + str(uuid.uuid4())
                     page_md_path = self.md_dir / f"{safe_name}.md"
                     page_md_path.write_text(r.markdown, encoding="utf-8")
 
@@ -428,15 +449,20 @@ if __name__ == "__main__":
         "--urlpattern",
         help="Space Separated keywords to look for in the URL",
     )
+    parser.add_argument(
+        "-bp",
+        "--blockedpattern",
+        help="Space Separated keywords to avoid in the URL",
+    )
     args = parser.parse_args()
 
-    if args.seedfile:
+    if args.seedfile and not args.url:
         SEEDS_FILE = args.seedfile
 
     if args.url:
         if len(args.url.split(" ")) == 1:
             ALL_SEEDS = [initialize_single_url(args.url)]
-            print(ALL_SEEDS)
+            pprint(ALL_SEEDS)
         else:
             ALL_SEEDS = args.url.split(" ")
     else:
@@ -470,6 +496,19 @@ if __name__ == "__main__":
             )  # Convert the keywords into a wild-card pattern
         # print(KEYWORDS)
         # print(URL_FILTERS)
+
+    if args.blockedpattern:
+        patterns = args.blockedpattern.lower().strip().split(" ")
+        for p in patterns:
+            BLOCKED_KEYWORDS.append(
+                f"*{p}*"
+            )  # Convert the keywords into a wild-card pattern
+
+    if not (args.urlpattern or args.blockedpattern):
+        STRATEGY = Mode.BFS_STRATEGY
+
+    if not args.seedfile:
+        BASE_CONCURRENCY = 1
 
     try:
         asyncio.run(run_scraper())
