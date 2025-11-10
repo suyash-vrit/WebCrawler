@@ -118,26 +118,7 @@ def status():
         "results": CRAWL["results"]
     })
 
-# def _load_results():
-#     results = []
-#     for dir_path in SCRAPED_ROOT.iterdir():
-#         if not dir_path.is_dir(): continue
-#         jsonl = dir_path / "index.jsonl"
-#         if not jsonl.exists(): continue
-#         seed_url = None
-#         with jsonl.open(encoding="utf-8") as f:
-#             first = f.readline()
-#             if first:
-#                 try: seed_url = json.loads(first).get("url")
-#                 except: pass
-#         if not seed_url:
-#             seed_url = f"http://{dir_path.name.replace('_single', '')}"
-#         results.append({
-#             "seed": seed_url,
-#             "directory": str(dir_path.relative_to(PROJECT_ROOT))
-#         })
-#     CRAWL["results"] = results
-# _load_results()
+
 def _load_results():
     results = []
     for dir_path in SCRAPED_ROOT.iterdir():
@@ -167,6 +148,7 @@ def _load_results():
             "directory": str(dir_path.relative_to(PROJECT_ROOT)),  # for display
             "abs_path": abs_path  # for opening
         })
+
     CRAWL["results"] = results
 
 # ----------------------------------------------------------------------

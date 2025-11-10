@@ -12,6 +12,9 @@ uv sync
 uv run webview_gui/app.py
 ```
 
+### GUI Screenshot
+![ss]()
+
 ## Flags
 - `--depth` `-d`: Controls the DEPTH of crawling (0 = only the given URL page; 1 = give URL + 1 hop; so on)
 - `--maxpages` `-m`: No. of pages to crawl *per seed*
