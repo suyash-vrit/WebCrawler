@@ -2,7 +2,7 @@ from colorama import Fore, Style
 from urllib.parse import urlsplit, urlunsplit
 from pathlib import Path
 
-DATAPATH_BASE = Path("scraped")
+DATAPATH_BASE = Path(__file__).parent / "scraped"
 
 
 class BasicLogger:
