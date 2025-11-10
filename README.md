@@ -13,7 +13,7 @@ uv run webview_gui/app.py
 ```
 
 ### GUI Screenshot
-![ss]()
+![ss](https://github.com/suyash-vrit/WebCrawler/blob/main/assets/ss.png)
 
 ## Flags
 - `--depth` `-d`: Controls the DEPTH of crawling (0 = only the given URL page; 1 = give URL + 1 hop; so on)
